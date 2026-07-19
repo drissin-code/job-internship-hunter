@@ -9,49 +9,77 @@ load_dotenv()
 APP_ID = os.getenv("ADZUNA_APP_ID")
 APP_KEY = os.getenv("ADZUNA_APP_KEY")
 
-COUNTRY = "in"
-WHAT = "software engineer"
-WHERE = "kerala"
-RESULTS_PER_PAGE = 10
+COUNTRIES = ["in", "us", "gb", "de"]  # India, USA, UK, Germany
+WHAT = "python developer"
+WHERE = ""  # leave blank to search the whole country
+RESULTS_PER_PAGE = 30  # higher, since we're filtering afterward
 OUTPUT_FILE = "jobs.json"
+
+# Companies you're specifically targeting — matched case-insensitively
+# against each job's company name
+TARGET_COMPANIES = [
+    "nvidia",
+    "tcs",
+    "tata consultancy",
+    "infosys",
+    "cognizant",
+    "okta",
+    "salesforce",
+]
 
 
 def fetch_jobs():
-    """Fetch jobs from Adzuna and return a list of structured job dicts."""
-    url = f"https://api.adzuna.com/v1/api/jobs/{COUNTRY}/search/1"
-    params = {
-        "app_id": APP_ID,
-        "app_key": APP_KEY,
-        "results_per_page": RESULTS_PER_PAGE,
-        "what": WHAT,
-        "where": WHERE,
-        "content-type": "application/json",
-    }
+    """Fetch jobs from Adzuna across multiple countries and return a list of structured job dicts."""
+    all_jobs = []
 
-    response = requests.get(url, params=params)
+    for country in COUNTRIES:
+        url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
+        params = {
+            "app_id": APP_ID,
+            "app_key": APP_KEY,
+            "results_per_page": RESULTS_PER_PAGE,
+            "what": WHAT,
+            "content-type": "application/json",
+        }
+        if WHERE:
+            params["where"] = WHERE
 
-    if response.status_code != 200:
-        print(f"Error: {response.status_code}")
-        print(response.text)
-        return []
+        response = requests.get(url, params=params)
 
-    data = response.json()
-    raw_jobs = data.get("results", [])
+        if response.status_code != 200:
+            print(f"Error fetching from {country}: {response.status_code}")
+            print(response.text)
+            continue
 
-    jobs = []
-    for job in raw_jobs:
-        jobs.append({
-            "id": job.get("id"),
-            "title": job.get("title", "N/A"),
-            "company": job.get("company", {}).get("display_name", "N/A"),
-            "location": job.get("location", {}).get("display_name", "N/A"),
-            "description": job.get("description", ""),
-            "salary_min": job.get("salary_min"),
-            "salary_max": job.get("salary_max"),
-            "url": job.get("redirect_url", "N/A"),
-            "fetched_at": datetime.now().isoformat(),
-        })
+        data = response.json()
+        raw_jobs = data.get("results", [])
 
+        for job in raw_jobs:
+            all_jobs.append({
+                "id": job.get("id"),
+                "title": job.get("title", "N/A"),
+                "company": job.get("company", {}).get("display_name", "N/A"),
+                "location": job.get("location", {}).get("display_name", "N/A"),
+                "country": country,
+                "description": job.get("description", ""),
+                "salary_min": job.get("salary_min"),
+                "salary_max": job.get("salary_max"),
+                "url": job.get("redirect_url", "N/A"),
+                "fetched_at": datetime.now().isoformat(),
+            })
+
+        print(f"  {country.upper()}: fetched {len(raw_jobs)} job(s)")
+
+    return all_jobs
+
+
+def flag_target_companies(jobs, target_companies):
+    """Mark whether each job's company matches one of the target companies."""
+    for job in jobs:
+        company_lower = job.get("company", "").lower()
+        job["is_target_company"] = any(
+            target in company_lower for target in target_companies
+        )
     return jobs
 
 
@@ -75,6 +103,18 @@ def save_jobs(jobs, filepath=OUTPUT_FILE):
 
 
 if __name__ == "__main__":
+    print(f"Fetching '{WHAT}' jobs across: {', '.join(COUNTRIES)}\n")
     jobs = fetch_jobs()
-    print(f"Fetched {len(jobs)} job(s) from Adzuna.\n")
+    jobs = flag_target_companies(jobs, TARGET_COMPANIES)
+
+    target_hits = [j for j in jobs if j["is_target_company"]]
+    print(
+        f"\nFetched {len(jobs)} job(s) total, {len(target_hits)} from target companies.\n")
+
+    if target_hits:
+        print("Target company matches:")
+        for job in target_hits:
+            print(f"  - {job['title']} @ {job['company']} ({job['location']})")
+        print()
+
     save_jobs(jobs)
