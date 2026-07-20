@@ -59,7 +59,7 @@ def match_node(state: PipelineState) -> PipelineState:
 def summarize_node(state: PipelineState) -> PipelineState:
     print("[Summarizer Agent] Writing summaries for top matches...")
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash", google_api_key=GEMINI_API_KEY)
+        model="gemini-3.1-flash-lite", google_api_key=GEMINI_API_KEY)
 
     summaries = []
     for i, job in enumerate(state["ranked"]):
@@ -73,7 +73,22 @@ def summarize_node(state: PipelineState) -> PipelineState:
         )
         try:
             response = llm.invoke(prompt)
-            summary_text = response.content
+
+            if isinstance(response.content, list):
+                # Newer Gemini models return content as a list of structured
+                # blocks (e.g. {"type": "text", "text": "..."}) rather than
+                # a plain string — pull just the text out of those blocks.
+                summary_text = "".join(
+                    block.get("text", "") for block in response.content
+                    if isinstance(block, dict) and block.get("type") == "text"
+                )
+            else:
+                summary_text = response.content
+
+            summary_text = summary_text.strip()
+            if not summary_text:
+                raise ValueError("Empty summary returned")
+
         except Exception as e:
             print(
                 f"  Warning: summary failed for '{job['title']}' ({e.__class__.__name__}) — using fallback")

@@ -14,7 +14,7 @@ load_dotenv()
 
 # Reuses the same Gemini setup pattern as agent_pipeline.py
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.0-flash")
+model = genai.GenerativeModel("gemini-3.1-flash-lite")
 
 EXTRACTION_PROMPT = """You are a resume parser. Read the resume text below and
 extract structured information. Respond ONLY with valid JSON, no markdown
