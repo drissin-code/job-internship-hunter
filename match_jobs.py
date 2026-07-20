@@ -37,23 +37,28 @@ def load_jobs(filepath=JOBS_FILE):
         return json.load(f)
 
 
-def score_job(job, skills):
+def score_job(job, skills, core_skills=None, target_skills=None):
     """Return (score, matched_core, matched_target) based on keyword hits
-    in the job title + description."""
+    in the job title + description. core_skills/target_skills default to
+    the module-level lists if not provided (keeps CLI usage unchanged)."""
+    core_skills = core_skills if core_skills is not None else CORE_SKILLS
+    target_skills = target_skills if target_skills is not None else TARGET_SKILLS
+
     text = f"{job.get('title', '')} {job.get('description', '')}".lower()
     matched = [
         skill for skill in skills
         if re.search(r"\b" + re.escape(skill.lower()) + r"\b", text)
     ]
-    matched_core = [s for s in matched if s in CORE_SKILLS]
-    matched_target = [s for s in matched if s in TARGET_SKILLS]
+    matched_core = [s for s in matched if s in core_skills]
+    matched_target = [s for s in matched if s in target_skills]
     return len(matched), matched_core, matched_target
 
 
-def rank_jobs(jobs, skills):
+def rank_jobs(jobs, skills, core_skills=None, target_skills=None):
     scored = []
     for job in jobs:
-        score, matched_core, matched_target = score_job(job, skills)
+        score, matched_core, matched_target = score_job(
+            job, skills, core_skills, target_skills)
         scored.append({
             **job,
             "match_score": score,

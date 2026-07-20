@@ -28,21 +28,26 @@ TARGET_COMPANIES = [
 ]
 
 
-def fetch_jobs():
-    """Fetch jobs from Adzuna across multiple countries and return a list of structured job dicts."""
+def fetch_jobs(countries=None, what=None, where=None):
+    """Fetch jobs from Adzuna across multiple countries and return a list of structured job dicts.
+    Falls back to the module-level defaults if no arguments are passed (keeps CLI usage unchanged)."""
+    countries = countries if countries is not None else COUNTRIES
+    what = what if what is not None else WHAT
+    where = where if where is not None else WHERE
+
     all_jobs = []
 
-    for country in COUNTRIES:
+    for country in countries:
         url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
         params = {
             "app_id": APP_ID,
             "app_key": APP_KEY,
             "results_per_page": RESULTS_PER_PAGE,
-            "what": WHAT,
+            "what": what,
             "content-type": "application/json",
         }
-        if WHERE:
-            params["where"] = WHERE
+        if where:
+            params["where"] = where
 
         response = requests.get(url, params=params)
 
