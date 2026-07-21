@@ -4,11 +4,16 @@ Step 1: Streamlit UI shell — DONE
 Step 2: Resume upload + skill extraction (pdfplumber + Gemini) — DONE
 Step 3: Country/role/target-company form inputs wired to the pipeline — DONE
 Step 4: Run button connected to agent_pipeline.py — DONE
+Step 5: Job cards show why_matched + missing_skills (v2 career coaching) — DONE
+Step 6: Aggregate "skills to focus on" panel across all matched jobs — DONE
+Step 7: Grounded strength/gap insight line (pure logic, no extra API call) — DONE
+Step 8: Removed target-company selector (Adzuna rarely surfaces them) — DONE
 
 Run with: streamlit run app.py
 """
 
 import streamlit as st
+from collections import Counter
 from resume_parser import parse_resume
 from agent_pipeline import run_pipeline
 
@@ -22,9 +27,6 @@ COUNTRY_NAME_TO_CODE = {
     "Germany": "de",
 }
 COUNTRIES = list(COUNTRY_NAME_TO_CODE.keys())
-
-TARGET_COMPANIES = ["NVIDIA", "TCS", "Infosys",
-                    "Cognizant", "Okta", "Salesforce"]
 
 # Fallback skills used only if no resume has been parsed yet
 DEFAULT_CORE_SKILLS = ["Python", "API", "LangChain", "LangGraph", "CrewAI"]
@@ -56,12 +58,6 @@ with st.sidebar:
     )
 
     role_query = st.text_input("Role / keywords", value="AI ML Intern")
-
-    selected_targets = st.multiselect(
-        "Target companies (flagged in results)",
-        options=TARGET_COMPANIES,
-        default=TARGET_COMPANIES,
-    )
 
     st.divider()
 
@@ -95,7 +91,6 @@ if run_clicked:
         st.session_state.results = None
     else:
         country_codes = [COUNTRY_NAME_TO_CODE[c] for c in selected_countries]
-        target_companies_lower = [c.lower() for c in selected_targets]
 
         # Use resume-extracted skills if available, otherwise fall back to defaults
         if st.session_state.resume_data and st.session_state.resume_data.get("skills"):
@@ -115,7 +110,6 @@ if run_clicked:
                     countries=country_codes,
                     what=role_query,
                     where="",
-                    target_companies=target_companies_lower,
                     skills=skills,
                     core_skills=core_skills,
                     target_skills=target_skills,
@@ -156,10 +150,25 @@ with col1:
                 with badge_col:
                     st.metric("Match", job["match_score"])
 
-                if job.get("is_target_company"):
-                    st.markdown("🎯 **Target company**")
-
                 st.write(job["summary"])
+
+                # Why this matched (v2)
+                if job.get("why_matched"):
+                    st.markdown(
+                        f"✅ **Why this matched:** {job['why_matched']}")
+
+                # Missing skills, shown as tags (v2)
+                missing = job.get("missing_skills") or []
+                if missing:
+                    tags_html = " ".join(
+                        f'<span style="background-color:#3a2f1a; color:#f5c66b; '
+                        f'padding:2px 10px; border-radius:12px; font-size:0.85em; '
+                        f'margin-right:6px;">{skill}</span>'
+                        for skill in missing
+                    )
+                    st.markdown(
+                        f"📌 **Skills to grow:** {tags_html}", unsafe_allow_html=True)
+
                 st.markdown(f"[View listing]({job['url']})")
     else:
         st.write(
@@ -198,3 +207,87 @@ with col2:
         st.write(", ".join(DEFAULT_TARGET_SKILLS))
         st.caption(
             "⬆️ Upload and parse a resume to replace this with your actual data.")
+
+    # -----------------------------------------------------------------
+    # Aggregate "Skills to focus on" panel (v2) — built from missing_skills
+    # across all matched jobs in the current results, no extra API call.
+    # -----------------------------------------------------------------
+    if st.session_state.results:
+        # --- Tally what's MISSING across all matched jobs ---
+        all_missing = []
+        for job in st.session_state.results:
+            all_missing.extend(job.get("missing_skills") or [])
+
+        missing_display_form = {}
+        missing_counts = Counter()
+        for skill in all_missing:
+            key = skill.strip().lower()
+            if not key:
+                continue
+            missing_counts[key] += 1
+            missing_display_form.setdefault(key, skill.strip())
+
+        ranked_missing = missing_counts.most_common()
+
+        # --- Tally what you're STRONG on: skills that actually matched,
+        # across all jobs (matched_core + matched_target) ---
+        all_matched = []
+        for job in st.session_state.results:
+            all_matched.extend(job.get("matched_core") or [])
+            all_matched.extend(job.get("matched_target") or [])
+
+        matched_display_form = {}
+        matched_counts = Counter()
+        for skill in all_matched:
+            key = skill.strip().lower()
+            if not key:
+                continue
+            matched_counts[key] += 1
+            matched_display_form.setdefault(key, skill.strip())
+
+        ranked_matched = matched_counts.most_common()
+
+        if ranked_missing or ranked_matched:
+            st.divider()
+            st.subheader("📈 Skills to Focus On")
+            st.caption(
+                "Based on gaps found across all your current job matches.")
+
+            # --- Grounded one-line insight (pure logic, no extra API call) ---
+            top_strengths = [matched_display_form[k]
+                             for k, _ in ranked_matched[:2]]
+            top_gaps = [missing_display_form[k] for k, _ in ranked_missing[:2]]
+
+            if top_strengths and top_gaps:
+                insight = (
+                    f"💡 Your resume is strong on **{' and '.join(top_strengths)}** — "
+                    f"most of your matches are being held back by **{' and '.join(top_gaps)}**."
+                )
+            elif top_strengths and not top_gaps:
+                insight = (
+                    f"💡 Your resume is strong on **{' and '.join(top_strengths)}**, "
+                    f"and no major skill gaps showed up across these matches."
+                )
+            elif top_gaps and not top_strengths:
+                insight = (
+                    f"💡 Across these matches, the biggest gaps are "
+                    f"**{' and '.join(top_gaps)}**."
+                )
+            else:
+                insight = None
+
+            if insight:
+                st.markdown(insight)
+
+            # --- Tags for the full missing-skills list ---
+            if ranked_missing:
+                tags_html = " ".join(
+                    f'<span style="background-color:#1a2f3a; color:#6bc6f5; '
+                    f'padding:3px 12px; border-radius:12px; font-size:0.9em; '
+                    f'margin-right:6px; margin-bottom:6px; display:inline-block;">'
+                    f'{missing_display_form[key]}'
+                    + (f' ({count})' if count > 1 else '')
+                    + '</span>'
+                    for key, count in ranked_missing
+                )
+                st.markdown(tags_html, unsafe_allow_html=True)

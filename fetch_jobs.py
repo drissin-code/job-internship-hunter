@@ -15,18 +15,6 @@ WHERE = ""  # leave blank to search the whole country
 RESULTS_PER_PAGE = 30  # higher, since we're filtering afterward
 OUTPUT_FILE = "jobs.json"
 
-# Companies you're specifically targeting — matched case-insensitively
-# against each job's company name
-TARGET_COMPANIES = [
-    "nvidia",
-    "tcs",
-    "tata consultancy",
-    "infosys",
-    "cognizant",
-    "okta",
-    "salesforce",
-]
-
 
 def fetch_jobs(countries=None, what=None, where=None):
     """Fetch jobs from Adzuna across multiple countries and return a list of structured job dicts.
@@ -78,16 +66,6 @@ def fetch_jobs(countries=None, what=None, where=None):
     return all_jobs
 
 
-def flag_target_companies(jobs, target_companies):
-    """Mark whether each job's company matches one of the target companies."""
-    for job in jobs:
-        company_lower = job.get("company", "").lower()
-        job["is_target_company"] = any(
-            target in company_lower for target in target_companies
-        )
-    return jobs
-
-
 def save_jobs(jobs, filepath=OUTPUT_FILE):
     """Save jobs to a JSON file, merging with existing entries and deduping by id."""
     existing = []
@@ -110,16 +88,5 @@ def save_jobs(jobs, filepath=OUTPUT_FILE):
 if __name__ == "__main__":
     print(f"Fetching '{WHAT}' jobs across: {', '.join(COUNTRIES)}\n")
     jobs = fetch_jobs()
-    jobs = flag_target_companies(jobs, TARGET_COMPANIES)
-
-    target_hits = [j for j in jobs if j["is_target_company"]]
-    print(
-        f"\nFetched {len(jobs)} job(s) total, {len(target_hits)} from target companies.\n")
-
-    if target_hits:
-        print("Target company matches:")
-        for job in target_hits:
-            print(f"  - {job['title']} @ {job['company']} ({job['location']})")
-        print()
-
+    print(f"\nFetched {len(jobs)} job(s) total.\n")
     save_jobs(jobs)
